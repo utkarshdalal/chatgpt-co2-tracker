@@ -168,126 +168,65 @@ let intervalId = null; // For periodic checks
 
 // Main initialization function - called on page load and URL changes
 function initialize() {
-  console.log("Initializing CO2 Tracker for URL:", window.location.href);
   const newChatId = getChatId();
-  console.log("Determined Chat ID:", newChatId);
-
-  // If chat ID hasn't changed, do nothing (avoids redundant setup)
-  // Allow initialization if currentChatId is null (first load)
-  // Allow initialization if newChatId is null (navigating to /chat base URL) - setupResponseMonitoring handles this
-  // if (newChatId && currentChatId === newChatId) {
-  //   console.log("Chat ID unchanged, skipping re-initialization.");
-  //   return;
-  // }
 
   // Cleanup previous observers/timers before setting up new ones
   cleanup();
   
-  currentChatId = newChatId; // Update the global chat ID
+  currentChatId = newChatId;
   
-  // Fetch and display total emissions (always do this)
+  // Fetch and display total emissions
   fetchAndDisplayTotalEmissions();
   
-  // Setup monitoring for new responses for the current chat context
-  // This observer will handle new messages appearing
+  // Setup monitoring for new responses
   setupResponseMonitoring();
   
-  // Fetch and display data for *existing* messages in the current view
-  // This handles refresh and navigating back to a chat
-  if (currentChatId) { // Only fetch if we have a valid chat ID
-      console.log("Fetching existing emissions data for chat:", currentChatId);
+  // Fetch and display data for existing messages
+  if (currentChatId) {
     const responseContainers = findResponseContainers();
     responseContainers.forEach(container => {
-          // Check if it already has a display (might have been added by streaming)
       if (!container.querySelector('.co2-tracker-display')) {
-               fetchEmissionsDataForChat(container, currentChatId); // Pass the specific chat ID
-          } else {
-              console.log("Display already exists for this container, skipping fetch.");
-          }
-      });
-  } else {
-      console.log("No specific chat ID found (e.g., /chat page), waiting for messages or navigation.");
-      // Displays for previous messages will be added by setupResponseMonitoring
-      // if the user sends a message in this 'new' chat context.
+        fetchEmissionsDataForChat(container, currentChatId);
+      }
+    });
   }
 
-  // Ensure URL change monitoring is active
-  setupUrlChangeMonitoring(); // Re-setup observer after cleanup
+  // Setup URL change monitoring
+  setupUrlChangeMonitoring();
 
   // Initialize and populate bottom chat display
   initializeChatDisplayArea();
   updateChatEmissionsDisplay(currentChatId);
-
-  console.log("Initialization complete for chat:", currentChatId);
 }
 
 // Clean up all observers
 function cleanup() {
-  console.log("Cleaning up observers and timers for previous chat:", currentChatId);
   if (responseObserver) {
     responseObserver.disconnect();
     responseObserver = null;
-    console.log("Disconnected response observer.");
   }
-  // We keep the URL observer running generally, but disconnect specific listeners if needed
-  // If urlObserver is used for more than just URL changes (e.g., title), it might need cleanup
-  // if (urlObserver) {
-  //    urlObserver.disconnect();
-  //    urlObserver = null;
-  // }
   if (intervalId) {
-      clearInterval(intervalId);
-      intervalId = null;
-      console.log("Cleared interval timer.");
+    clearInterval(intervalId);
+    intervalId = null;
   }
-  // Remove existing total emissions display to prevent duplicates on re-init
-  const existingTotalDisplay = document.getElementById('co2-total-emissions');
-   if (existingTotalDisplay) {
-       // existingTotalDisplay.remove(); // Decide if removal is needed or just update
-   }
 }
 
-// Setup monitoring for URL changes (more robustly)
+// Setup monitoring for URL changes
 function setupUrlChangeMonitoring() {
-    // If observer already exists, don't create a new one
-    if (urlObserver) return;
+  if (urlObserver) return;
 
-    console.log("Setting up URL change monitoring.");
-    let lastUrl = window.location.href;
-
-    // Option 1: Use MutationObserver on title (often changes with SPA navigation)
-    const titleElement = document.querySelector('head > title');
-    if (titleElement) {
-        urlObserver = new MutationObserver(() => {
-            const currentUrl = window.location.href;
-            if (currentUrl !== lastUrl) {
-                console.log(`URL change detected (Title Observer): ${lastUrl} -> ${currentUrl}`);
-                lastUrl = currentUrl;
-                handleUrlChange(); // Call the handler
-            }
-        });
-        urlObserver.observe(titleElement, { childList: true });
-    } else {
-        console.warn("Could not find title element for URL change monitoring.");
-        // Fallback or alternative needed if title doesn't exist/work
-    }
-
-
-    // Option 2: Periodic check (less efficient, but a fallback)
-    // Consider removing this if the title observer is reliable
-    // intervalId = setInterval(() => {
-    //     const currentUrl = window.location.href;
-    //     if (currentUrl !== lastUrl) {
-    //         console.log(`URL change detected (Interval): ${lastUrl} -> ${currentUrl}`);
-    //         lastUrl = currentUrl;
-    //         handleUrlChange(); // Call the handler
-    //     }
-    // }, 1000); // Check every second
-
-    // Option 3: Listen to popstate/hashchange (might work for some navigation)
-    // window.addEventListener('popstate', handleUrlChange);
-    // window.addEventListener('hashchange', handleUrlChange);
-    // Note: These might not cover all SPA navigation types in ChatGPT.
+  let lastUrl = window.location.href;
+  const titleElement = document.querySelector('head > title');
+  if (titleElement) {
+    urlObserver = new MutationObserver(() => {
+      const currentUrl = window.location.href;
+      if (currentUrl !== lastUrl) {
+        lastUrl = currentUrl;
+        handleUrlChange();
+      }
+    });
+    urlObserver.observe(titleElement, { childList: true });
+  }
 }
 
 // Handler for URL changes
@@ -300,13 +239,11 @@ function handleUrlChange() {
 
 // Setup MutationObserver to watch for new ChatGPT responses
 function setupResponseMonitoring() {
-  // If observer already exists, disconnect the old one first
   if (responseObserver) {
     responseObserver.disconnect();
   }
-  console.log("Setting up response monitoring.");
 
-  const targetNode = document.body; // Observe the whole body, or a more specific container if identifiable
+  const targetNode = document.body;
   if (!targetNode) {
     console.error("Target node for response observer not found!");
     return;
@@ -318,24 +255,17 @@ function setupResponseMonitoring() {
     for (const mutation of mutationsList) {
       if (mutation.type === 'childList') {
         mutation.addedNodes.forEach(node => {
-          // Check if the added node is an element and contains a response container
-          if (node.nodeType === 1) { // Check if it's an element node
-             // Look for assistant messages within the added node or its children
-             const responseContainers = node.matches('div[data-message-author-role="assistant"]')
-                ? [node] // The added node itself is the container
-                : node.querySelectorAll('div[data-message-author-role="assistant"]'); // Look inside the added node
+          if (node.nodeType === 1) {
+            const responseContainers = node.matches('div[data-message-author-role="assistant"]')
+              ? [node]
+              : node.querySelectorAll('div[data-message-author-role="assistant"]');
 
-
-              responseContainers.forEach(container => {
-                 // Check if we haven't processed this container yet (e.g., add a marker attribute)
-                 if (!container.hasAttribute('data-co2-processed')) {
-                     container.setAttribute('data-co2-processed', 'true'); // Mark as processed
-                     console.log('New assistant response container detected:', container);
-
-                     // Start monitoring this specific response for streaming and completion
-                     monitorStreamingResponse(container);
-                 }
-              });
+            responseContainers.forEach(container => {
+              if (!container.hasAttribute('data-co2-processed')) {
+                container.setAttribute('data-co2-processed', 'true');
+                monitorStreamingResponse(container);
+              }
+            });
           }
         });
       }
@@ -343,7 +273,6 @@ function setupResponseMonitoring() {
   });
 
   responseObserver.observe(targetNode, config);
-  console.log("Response observer attached.");
 }
 
 // Monitor a specific response container for streaming text and completion
@@ -588,32 +517,28 @@ function fetchAndDisplayTotalEmissions() {
 
 // Update total emissions display element
 function updateTotalEmissionsDisplay(data) {
-    const totalDisplayArea = initializeTotalEmissionsDisplayArea(); // Ensure area exists and structure is correct
+    const totalDisplayArea = initializeTotalEmissionsDisplayArea();
     if (!totalDisplayArea) {
         console.error("Failed to get or create total display area for update.");
         return;
     }
-    console.log("[updateTotalEmissionsDisplay] Received data:", data); // DEBUG LOG
-    // Create the new content structure, passing the full data object
-    let totalDisplayContent = createTotalEmissionsDisplay(data); 
-    // Replace content of the display area
-    totalDisplayArea.innerHTML = totalDisplayContent.innerHTML; 
-    // Apply necessary styles directly to the area
-    totalDisplayArea.style.display = 'flex'; 
-    totalDisplayArea.style.alignItems = 'center'; 
-    totalDisplayArea.style.justifyContent = 'space-between'; 
+
+    let totalDisplayContent = createTotalEmissionsDisplay(data);
+    totalDisplayArea.innerHTML = totalDisplayContent.innerHTML;
+    totalDisplayArea.style.display = 'flex';
+    totalDisplayArea.style.alignItems = 'center';
+    totalDisplayArea.style.justifyContent = 'space-between';
     
-    const isDarkMode = document.documentElement.classList.contains('dark') || document.body.classList.contains('dark') || window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const isDarkMode = document.documentElement.classList.contains('dark') || 
+                      document.body.classList.contains('dark') || 
+                      window.matchMedia('(prefers-color-scheme: dark)').matches;
     if (isDarkMode) {
         totalDisplayArea.style.color = '#fff';
     } else {
         totalDisplayArea.style.color = '#333';
     }
     
-    // Ensure the reset button listener is attached after updating innerHTML
     addResetButtonListener();
-
-    console.log("Updated total emissions display (flex row wrapped approach).", totalDisplayArea);
 }
 
 // **NEW**: Function to create chat-specific emissions display (for the bottom)
@@ -885,41 +810,36 @@ const DEFAULT_EMISSIONS_DATA = {
   responseCount: 0 // Keep this consistent if background.js uses it
 };
 
-// Add Event Listener for Reset Button (using event delegation on the parent area)
+// Add Event Listener for Reset Button
 function addResetButtonListener() {
-    const totalDisplayArea = document.getElementById('co2-total-display-area');
-    if (totalDisplayArea && !totalDisplayArea.dataset.listenerAttached) { // Prevent multiple listeners
-        console.log("Attaching reset button listener to area:", totalDisplayArea);
-        totalDisplayArea.addEventListener('click', (event) => {
-            if (event.target && event.target.id === 'reset-total-button') {
-                console.log("Reset Total button clicked");
-                if (confirm("Are you sure you want to reset the total emissions tracker AND the current chat's emissions?")) {
-                    const currentChatIdForReset = getChatId(); // Get current chat ID at time of reset
-                    console.log("Sending reset request for total and chat:", currentChatIdForReset);
-                    chrome.runtime.sendMessage({ 
-                        type: 'reset_total_emissions', 
-                        chatId: currentChatIdForReset // Include current chat ID
-                    }, response => {
-                        if (chrome.runtime.lastError) {
-                            console.error("Error sending reset message:", chrome.runtime.lastError);
-                            alert("Failed to reset totals. See console for details.");
-                            return;
-                        }
-                        if (response && response.success) {
-                            console.log("Reset successful signaled by background.");
-                            // Re-fetch and update BOTH displays
-                            fetchAndDisplayTotalEmissions();
-                            updateChatEmissionsDisplay(currentChatIdForReset); // Update bottom display for the reset chat
-                        } else {
-                            console.error("Background script reported failure during reset:", response);
-                            alert("Failed to reset totals. Background script reported an error.");
-                        }
-                    });
-                }
+  const totalDisplayArea = document.getElementById('co2-total-display-area');
+  if (totalDisplayArea && !totalDisplayArea.dataset.listenerAttached) {
+    totalDisplayArea.addEventListener('click', (event) => {
+      if (event.target && event.target.id === 'reset-total-button') {
+        if (confirm("Are you sure you want to reset the total emissions tracker AND the current chat's emissions?")) {
+          const currentChatIdForReset = getChatId();
+          chrome.runtime.sendMessage({ 
+            type: 'reset_total_emissions', 
+            chatId: currentChatIdForReset
+          }, response => {
+            if (chrome.runtime.lastError) {
+              console.error("Error sending reset message:", chrome.runtime.lastError);
+              alert("Failed to reset totals. See console for details.");
+              return;
             }
-        });
-        totalDisplayArea.dataset.listenerAttached = 'true'; // Mark as attached
-    }
+            if (response && response.success) {
+              fetchAndDisplayTotalEmissions();
+              updateChatEmissionsDisplay(currentChatIdForReset);
+            } else {
+              console.error("Background script reported failure during reset:", response);
+              alert("Failed to reset totals. Background script reported an error.");
+            }
+          });
+        }
+      }
+    });
+    totalDisplayArea.dataset.listenerAttached = 'true';
+  }
 }
 
 // --- Main Execution ---

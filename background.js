@@ -34,8 +34,7 @@ const DEFAULT_EMISSIONS_DATA = {
   kilometersDriven: 0, // Store kilometers directly
   glassesOfWater: 0,
   totalQueries: 0,
-  responseCount: 0,
-  lastResponseTime: 0 // Store the response time of the last message
+  responseCount: 0
 };
 
 // Total emissions key for all chats
@@ -64,35 +63,27 @@ function initializeEmissionsData(chatId = 'default-chat') {
       // Ensure all properties exist and are numeric
       const updatedData = { ...DEFAULT_EMISSIONS_DATA };
       for (const key in result[storageKey]) {
-          if (key === 'lastResponseTime') {
-             // Allow 0, handle potential NaN/non-numeric
-             updatedData[key] = typeof result[storageKey][key] === 'number' && !isNaN(result[storageKey][key]) ? result[storageKey][key] : 0;
-          } else if (typeof result[storageKey][key] === 'number' && !isNaN(result[storageKey][key])) {
-             updatedData[key] = result[storageKey][key];
-          }
+        if (typeof result[storageKey][key] === 'number' && !isNaN(result[storageKey][key])) {
+          updatedData[key] = result[storageKey][key];
+        }
       }
-      // Ensure responseCount exists (already handled, keep for safety)
+      // Ensure responseCount exists
       if (typeof updatedData.responseCount !== 'number') {
         updatedData.responseCount = 0;
       }
-      // Ensure lastResponseTime exists
-      if (typeof updatedData.lastResponseTime !== 'number') {
-        updatedData.lastResponseTime = 0;
-      }
-       // Ensure kilometersDriven exists (already handled, keep for safety)
+      // Ensure kilometersDriven exists and is numeric
       if (typeof updatedData.kilometersDriven !== 'number' || isNaN(updatedData.kilometersDriven)) {
+        // If migrating from milesDriven, calculate it once
         if (typeof result[storageKey].milesDriven === 'number') {
             updatedData.kilometersDriven = result[storageKey].milesDriven * 1.60934;
         } else {
             updatedData.kilometersDriven = 0;
         }
       }
+      // Remove old milesDriven if present
       delete updatedData.milesDriven;
 
-      // Only set if changes were needed
-      if (JSON.stringify(updatedData) !== JSON.stringify(result[storageKey])) {
-         chrome.storage.local.set({ [storageKey]: updatedData });
-      }
+      chrome.storage.local.set({ [storageKey]: updatedData });
     }
   });
 }
@@ -215,8 +206,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       
       // Calculate emissions for this request
       const tokens = message.outputTokens || 0;
+      
+      // Include response time in calculation if available
       const responseTime = message.responseTime || 0; // time in seconds
       const timeFactor = responseTime * TIME_FACTOR;
+      
+      // Calculate CO2: token-based + time-based
       const co2 = (tokens * co2PerToken) + timeFactor;
       const water = tokens * waterPerToken;
       
@@ -236,7 +231,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       emissionsData.glassesOfWater = emissionsData.water / GLASS_VOLUME; // Recalculate based on new total
       emissionsData.totalQueries += 1; // Increment total queries for this chat
       emissionsData.responseCount += 1; // Increment response count for this chat
-      emissionsData.lastResponseTime = responseTime; // <-- STORE LAST RESPONSE TIME
+      // Remove old milesDriven if present
       delete emissionsData.milesDriven;
       
       // Update total emissions data across all chats
@@ -245,6 +240,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       totalEmissionsData.kilometersDriven = totalEmissionsData.co2 / CO2_PER_KILOMETER; // Calculate kilometers
       totalEmissionsData.glassesOfWater = totalEmissionsData.water / GLASS_VOLUME; // Recalculate based on new total
       totalEmissionsData.totalQueries += 1; // Increment overall total queries
+      // Remove old milesDriven if present
       delete totalEmissionsData.milesDriven;
       
       console.log('Updated cumulative emissions data for chat:', emissionsData);
@@ -278,16 +274,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (result[storageKey]) {
         // Copy only numeric values
         for (const key in result[storageKey]) {
-           // Ensure lastResponseTime is copied
-           if (key === 'lastResponseTime' && typeof result[storageKey][key] === 'number' && !isNaN(result[storageKey][key])) {
-               safeData[key] = result[storageKey][key];
-           } else if (typeof result[storageKey][key] === 'number' && !isNaN(result[storageKey][key])) {
-               safeData[key] = result[storageKey][key];
-           }
-        }
-        // Ensure lastResponseTime has a fallback
-        if (typeof safeData.lastResponseTime !== 'number') {
-           safeData.lastResponseTime = 0;
+          if (typeof result[storageKey][key] === 'number' && !isNaN(result[storageKey][key])) {
+            safeData[key] = result[storageKey][key];
+          }
         }
       }
       
@@ -303,7 +292,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
       
       sendResponse({
-        ...safeData, // Includes lastResponseTime now
+        ...safeData,
         totalEmissionsData: totalData
       });
     });
@@ -356,7 +345,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Also reset current chat data if a valid chat ID was provided
     if (chatIdToReset && chatIdToReset !== 'unknown-chat' && chatIdToReset !== null) {
         const chatStorageKey = getStorageKey(chatIdToReset);
-        // Reset chat data to full default (includes resetting lastResponseTime to 0)
+        // Reset chat data but KEEP its own responseCount/totalQueries logic if separate
+        // Or just reset to full default if desired.
         operations[chatStorageKey] = { ...DEFAULT_EMISSIONS_DATA }; 
         console.log(`Also resetting emissions for chat ID: ${chatIdToReset}`);
     } else {

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle -->
+  <circle cx="64" cy="64" r="60" fill="#4CAF50"/>
+  
+  <!-- Leaf shape -->
+  <path d="M64 24C44 24 28 40 28 60C28 80 44 96 64 96C84 96 100 80 100 60C100 40 84 24 64 24ZM64 88C48 88 36 76 36 60C36 44 48 32 64 32C80 32 92 44 92 60C92 76 80 88 64 88Z" fill="white"/>
+  
+  <!-- CO2 text -->
+  <text x="64" y="70" font-family="Arial" font-size="24" fill="white" text-anchor="middle">CO₂</text>
+</svg> 
